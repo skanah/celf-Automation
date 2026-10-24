@@ -1,0 +1,46 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+lib/
+lib64/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE / tooling
+.qodo/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data / runtime (contains credentials & uploads — do not commit)
+data/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>CELF · Multi-Account Reporting</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-slate-100 min-h-screen p-8 font-sans">
+    <div class="max-w-6xl mx-auto space-y-6">
+      <h1 class="text-2xl font-bold text-slate-800">
+        CELF · Multi-Account Reporting
+      </h1>
+
+      <!-- Uploads -->
+      <div class="grid md:grid-cols-3 gap-6">
+        <!-- Accounts -->
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <h2 class="font-bold text-slate-700 mb-2">1. Accounts CSV</h2>
+          <p class="text-xs text-slate-500 mb-3">
+            Columns: <code>account_id, username, password</code>
+          </p>
+          <input
+            type="file"
+            id="accountsFile"
+            accept=".csv"
+            class="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-600 file:text-white"
+          />
+          <button
+            id="uploadAccountsBtn"
+            class="mt-3 bg-slate-800 text-white px-4 py-2 rounded-lg text-sm"
+          >
+            Upload
+          </button>
+          <p id="accountsStatus" class="mt-2 text-xs text-green-600"></p>
+        </div>
+
+        <!-- Church reports -->
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <h2 class="font-bold text-slate-700 mb-2">2. Church Reports</h2>
+          <p class="text-xs text-slate-500 mb-3">
+            Columns:
+            <code>event_date, name, sun1_adult, … , virtual_total</code>
+          </p>
+          <input
+            type="file"
+            id="churchFile"
+            accept=".csv,.xlsx"
+            class="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-600 file:text-white"
+          />
+          <button
+            id="uploadChurchBtn"
+            class="mt-3 bg-slate-800 text-white px-4 py-2 rounded-lg text-sm"
+          >
+            Upload
+          </button>
+          <p id="churchStatus" class="mt-2 text-xs text-green-600"></p>
+        </div>
+
+        <!-- Cell reports -->
+        <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+          <h2 class="font-bold text-slate-700 mb-2">3. Cell Reports</h2>
+          <p class="text-xs text-slate-500 mb-3">
+            Columns: <code>date_of_meeting, type_of_meeting, …</code>
+          </p>
+          <input
+            type="file"
+            id="cellFile"
+            accept=".csv,.xlsx"
+            class="block w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-600 file:text-white"
+          />
+          <button
+            id="uploadCellBtn"
+            class="mt-3 bg-slate-800 text-white px-4 py-2 rounded-lg text-sm"
+          >
+            Upload
+          </button>
+          <p id="cellStatus" class="mt-2 text-xs text-green-600"></p>
+        </div>
+      </div>
+
+      <!-- Run -->
+      <div
+        class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex items-center justify-between"
+      >
+        <div>
+          <h2 class="font-bold text-slate-700">4. Execute</h2>
+          <p class="text-xs text-slate-500">
+            Runs church &amp; cell reports in parallel for all uploaded
+            accounts.
+          </p>
+        </div>
+        <button
+          id="runBtn"
+          disabled
+          class="bg-brand-600 disabled:opacity-40 text-white font-semibold px-6 py-3 rounded-xl hover:bg-brand-700"
+        >
+          ▶ Run
+        </button>
+      </div>
+
+      <!-- Logs -->
+      <div class="bg-slate-900 text-slate-100 rounded-2xl p-6 shadow-sm">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="font-bold">Live Logs</h2>
+          <span
+            id="statusBadge"
+            class="text-xs bg-slate-700 px-3 py-1 rounded-full"
+            >idle</span
+          >
+        </div>
+        <pre
+          id="logBox"
+          class="text-xs font-mono max-h-96 overflow-y-auto whitespace-pre-wrap"
+        ></pre>
+      </div>
+    </div>
+
+    <script>
+      const socket = io();
+      let accounts = [],
+        churchRows = [],
+        cellRows = [];
+
+      const logBox = document.getElementById("logBox");
+      const statusBadge = document.getElementById("statusBadge");
+
+      function append(msg) {
+        const t = new Date().toLocaleTimeString();
+        logBox.textContent += `[${t}] ${msg}\n`;
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+
+      socket.on("log", (d) => append(d.message));
+      socket.on("result", (r) => {
+        const icon = r.status === "success" ? "✅" : "❌";
+        append(
+          `  ↳ ${icon} ${r.account} | ${r.type} | ${r.date} ${r.error ? "— " + r.error : ""}`,
+        );
+      });
+      socket.on("done", () => {
+        statusBadge.textContent = "done";
+        statusBadge.className = "text-xs bg-green-600 px-3 py-1 rounded-full";
+        document.getElementById("runBtn").disabled = false;
+      });
+
+      async function upload(url, file, statusEl, cb) {
+        const fd = new FormData();
+        fd.append("file", file);
+        statusEl.textContent = "Uploading…";
+        statusEl.className = "mt-2 text-xs text-slate-500";
+        try {
+          const res = await fetch(url, { method: "POST", body: fd });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          statusEl.textContent = `✅ ${data.accounts?.length ?? data.count} row(s) loaded`;
+          statusEl.className = "mt-2 text-xs text-green-600";
+          cb(data);
+        } catch (e) {
+          statusEl.textContent = "❌ " + e.message;
+          statusEl.className = "mt-2 text-xs text-red-600";
+        }
+        checkReady();
+      }
+
+      document.getElementById("uploadAccountsBtn").onclick = () => {
+        const f = document.getElementById("accountsFile").files[0];
+        if (f)
+          upload(
+            "/upload/accounts",
+            f,
+            document.getElementById("accountsStatus"),
+            (d) => (accounts = d.accounts),
+          );
+      };
+
+      document.getElementById("uploadChurchBtn").onclick = () => {
+        const f = document.getElementById("churchFile").files[0];
+        if (f)
+          upload(
+            "/upload/church",
+            f,
+            document.getElementById("churchStatus"),
+            (d) => (churchRows = d.rows),
+          );
+      };
+
+      document.getElementById("uploadCellBtn").onclick = () => {
+        const f = document.getElementById("cellFile").files[0];
+        if (f)
+          upload(
+            "/upload/cell",
+            f,
+            document.getElementById("cellStatus"),
+            (d) => (cellRows = d.rows),
+          );
+      };
+
+      function checkReady() {
+        document.getElementById("runBtn").disabled = !(
+          accounts.length &&
+          (churchRows.length || cellRows.length)
+        );
+      }
+
+      document.getElementById("runBtn").onclick = async () => {
+        logBox.textContent = "";
+        statusBadge.textContent = "running";
+        statusBadge.className = "text-xs bg-amber-500 px-3 py-1 rounded-full";
+        document.getElementById("runBtn").disabled = true;
+
+        const res = await fetch("/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accounts,
+            church_rows: churchRows,
+            cell_rows: cellRows,
+          }),
+        });
+        const data = await res.json();
+        append(data.message || data.error);
+      };
+    </script>
+  </body>
+</html>
